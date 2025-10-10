@@ -118,12 +118,12 @@ local function parse_json(content)
 
   local function traverse(tbl, prefix)
     for k, v in pairs(tbl) do
-      local full_key = prefix == "" and k or (prefix .. "." .. k)
+      local full_key = prefix == "" and tostring(k) or (prefix .. "." .. tostring(k))
       if type(v) == "table" then
         traverse(v, full_key)
       else
         flat[full_key] = v
-        local line, col = find_line_and_col(k)
+        local line, col = find_line_and_col(tostring(k))
         local ltxt = lines[line] or ""
         local max_col = #ltxt
         if max_col == 0 then
