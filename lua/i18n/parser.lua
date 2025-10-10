@@ -82,6 +82,7 @@ local function parse_json(content)
   end
 
   local function guess_line(seg)
+    seg = tostring(seg)  -- 确保 seg 是字符串
     for idx, l in ipairs(lines) do
       -- 匹配 "seg": 或 'seg':
       if l:match('[\'"]' .. vim.pesc(seg) .. '[\'"]%s*:') then
@@ -96,6 +97,7 @@ local function parse_json(content)
   local col_map = {}
 
   local function find_line_and_col(seg)
+    seg = tostring(seg)  -- 确保 seg 是字符串
     for idx, l in ipairs(lines) do
       -- 匹配 "key": 或 'key':
       local pattern = '([\'"])' .. vim.pesc(seg) .. '%1%s*:'
