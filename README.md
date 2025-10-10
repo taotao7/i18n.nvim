@@ -1,5 +1,8 @@
 # 🌐 i18n.nvim
 
+- performance optimizations
+- better compatibility
+
 A lightweight Neovim plugin for displaying and managing project i18n (translation) files directly in the editor.  
 Designed to work across most project types (front-end, backend, mixed monorepos), supporting JSON, YAML, Java .properties, and JS/TS translation modules (Tree-sitter parses JS/TS translation objects).
 
@@ -105,6 +108,7 @@ Example configuration using lazy.nvim:
 ## 🎛 Keymaps & Commands
 
 Recommended keymaps (lazy.nvim `keys` example, using the global `I18n` helper):
+
 ```lua
 keys = {
   { "<D-S-n>", function() I18n.i18n_keys() end,      desc = "Show i18n keys" },
@@ -125,6 +129,7 @@ keys = {
 ```
 
 Commands:
+
 - 🔄 :**I18nNextLocale**
   Cycles the active display language used for inline virtual text. It moves to the next entry in `locales` (wrapping back to the first). Inline overlays refresh automatically.
 - 👁 :**I18nToggleOrigin** / `I18n.toggle_origin()`
@@ -144,6 +149,7 @@ Command:
 :I18nAddKey
 
 Usage:
+
 1. Place the cursor on an i18n function call whose key does NOT yet exist (e.g. t("system.new_feature.title")).
 2. Run :I18nAddKey
 3. A popup appears with one input line per configured locale (first = default).
@@ -153,6 +159,7 @@ Usage:
 7. Press <Esc> or <C-c> to cancel without changes.
 
 Details:
+
 - Target files are chosen by matching the longest registered file prefix (from your config.sources prefix) against the key.
 - Currently JSON files are updated (YAML is ignored for writing if encountered, with a notification).
 - Files are created if missing, and keys are inserted in nested form (a.b.c builds { "a": { "b": { "c": "..." }}}).
@@ -170,12 +177,14 @@ Now the key exists in all locale files.
 ## 🔌 blink.cmp Integration
 
 The plugin provides a blink.cmp source (`i18n.integration.blink_source`) that:
+
 - Offers completion items where the label and inserted text are the i18n key.
 - Shows the key itself in the detail field (so the preview panel title is stable / language-agnostic).
 - Resolves full multi-language translations in the documentation panel (each language on its own line).
 - Plays nicely with other sources (LSP, snippets, path, buffer, etc).
 
 Example blink.cmp configuration:
+
 ```lua
 require('blink.cmp').setup({
   sources = {
@@ -198,12 +207,14 @@ require('blink.cmp').setup({
 ## 🧩 nvim-cmp Integration
 
 Features:
+
 - Provides i18n keys as completion items (label & inserted text are the key itself)
 - Context aware: only triggers inside the first string argument of your configured i18n function calls (derived from `config.options.func_pattern`) and ignores matches inside comments
 - Documentation shows translations for every configured locale; missing ones are marked `(missing)`
 - Lightweight: reuses already parsed in‑memory tables (no extra file IO during completion)
 
 Basic setup (after installing `hrsh7th/nvim-cmp`):
+
 ```lua
 local cmp = require('cmp')
 
@@ -221,6 +232,7 @@ cmp.setup({
 ```
 
 Lazy.nvim snippet:
+
 ```lua
 {
   'yelog/i18n.nvim',
@@ -237,6 +249,7 @@ Lazy.nvim snippet:
 ```
 
 Tips:
+
 - To make the source always active (not recommended), you could broaden
   `func_pattern` (e.g. add more function names or custom matchers), but keeping
   precise entries reduces noise.
@@ -248,6 +261,7 @@ A Telescope picker is also provided for users who prefer Telescope over fzf-lua.
 It offers similar actions: copy key, copy current locale translation, jump to definition (current or default locale), choose locale then jump, and split/vsplit/tab open variants.
 
 Setup (lazy.nvim example):
+
 ```lua
 {
   'yelog/i18n.nvim',
@@ -273,6 +287,7 @@ The legacy helpers `show_i18n_keys_with_fzf()` / `show_i18n_keys_with_telescope(
 The plugin exposes `require('i18n').setup(opts)` where `opts` is merged with defaults.
 
 Merge precedence (highest last):
+
 1. Built-in defaults (internal)
 2. Options passed to `require('i18n').setup({...})`
 3. Project-level config file in the current working directory (if present)
@@ -287,10 +302,11 @@ directly (e.g. `function() I18n.i18n_keys() end`) without requiring the module
 inside each callback.
 
 Common options (all optional when a project file is present):
+
 - locales: array of language codes, first is considered default
 - sources: array of file patterns or objects:
-  * string pattern e.g. `src/locales/{locales}.json`
-  * table: `{ pattern = "pattern", prefix = "optional.prefix." }`
+  - string pattern e.g. `src/locales/{locales}.json`
+  - table: `{ pattern = "pattern", prefix = "optional.prefix." }`
 - func_pattern: names/specs describing translation call sites. Plain strings
   become safe matchers (e.g. `{ 't', '$t' }`); tables allow advanced control;
   raw Lua patterns are still accepted for legacy setups.
@@ -302,9 +318,9 @@ Common options (all optional when a project file is present):
 - show_locale_file_eol_usage: toggle usage badges in locale buffers (default `true`)
 - filetypes / ft: restrict which filetypes are processed
 - diagnostic: controls missing translation diagnostics (see below):
-  * `false`: disable diagnostics entirely (existing ones are cleared)
-  * `true`: enable diagnostics with default behavior (ERROR severity for missing translations)
-  * `{ ... }` (table): enable diagnostics and pass the table as the 4th argument to `vim.diagnostic.set` (e.g. `{ underline = false, virtual_text = false }`)
+  - `false`: disable diagnostics entirely (existing ones are cleared)
+  - `true`: enable diagnostics with default behavior (ERROR severity for missing translations)
+  - `{ ... }` (table): enable diagnostics and pass the table as the 4th argument to `vim.diagnostic.set` (e.g. `{ underline = false, virtual_text = false }`)
 
 ### `func_pattern` quick guide
 
@@ -329,6 +345,7 @@ Unified API: all public helpers are available via require('i18n') (e.g. i18n_def
 Returns true if it jumped, false if no i18n key / location found (so you can fallback to LSP).
 
 Example keymap that prefers i18n, then falls back to LSP definition:
+
 ```lua
 vim.keymap.set('n', 'gd', function()
   -- Jump from an i18n key usage to its definition
@@ -345,6 +362,7 @@ end, { desc = 'i18n or LSP definition' })
 ```
 
 Separate key (only i18n):
+
 ```lua
 vim.keymap.set('n', 'gK', function()
   require('i18n').i18n_definition()
@@ -353,7 +371,7 @@ end, { desc = 'Jump to i18n definition' })
 
 Configuration option:
 navigation = {
-  open_cmd = "edit", -- or 'vsplit' | 'split' | 'tabedit'
+open_cmd = "edit", -- or 'vsplit' | 'split' | 'tabedit'
 }
 
 Line numbers are best-effort for JSON/YAML/.properties (heuristic matching); JS/TS uses Tree-sitter for higher accuracy.
@@ -374,6 +392,7 @@ responsive while usage counts backfill in the background.
 - Adjust highlight links via `:hi I18nUsageLabel`, `:hi I18nUsageTranslation`, and `:hi I18nUsageSeparator` if you prefer different colors.
 
 Example keymap that tries the i18n usage jump first, then falls back to LSP references (mirrors the `gd` example above):
+
 ```lua
 vim.keymap.set('n', 'gu', function()
   if require('i18n').i18n_key_usages() then
@@ -391,6 +410,7 @@ Helper: require('i18n').show_popup() -> boolean
 Returns true if a popup was shown, false if no key / translations found.
 
 Example combined mapping (try popup first, else fallback to signature help):
+
 ```lua
 vim.keymap.set({ "n", "i" }, "<C-k>", function()
   if not require('i18n').show_popup() then
@@ -399,10 +419,10 @@ vim.keymap.set({ "n", "i" }, "<C-k>", function()
 end, { desc = "i18n popup or signature help" })
 ```
 
-
 ### 🏗 Project-level Configuration (recommended)
 
 You can place a project-specific config file at the project root. The plugin will auto-detect (in order) the first existing file:
+
 - `.i18nrc.json`
 - `i18n.config.json`
 - `.i18nrc.lua`
@@ -410,17 +430,22 @@ You can place a project-specific config file at the project root. The plugin wil
 If found, its values override anything you passed to `setup()`.
 
 Example `.i18nrc.json`:
+
 ```json
 {
   "locales": ["en_US", "zh_CN"],
   "sources": [
     "src/locales/{locales}.json",
-    { "pattern": "src/locales/lang/{locales}/{module}.ts", "prefix": "{module}." }
+    {
+      "pattern": "src/locales/lang/{locales}/{module}.ts",
+      "prefix": "{module}."
+    }
   ]
 }
 ```
 
 Example `.i18nrc.lua`:
+
 ```lua
 return {
   locales = { "en_US", "zh_CN" },
@@ -440,6 +465,7 @@ return {
 ```
 
 Minimal Neovim config (global defaults) – can be empty or partial:
+
 ```lua
 require('i18n').setup({
   locales = { 'en', 'zh' },  -- acts as a fallback if project file absent
@@ -448,13 +474,16 @@ require('i18n').setup({
 ```
 
 If later you add a project config file, just reopen the project (or call:
+
 ```lua
 require('i18n').reload_project_config()
 require('i18n').setup(require('i18n').options)
 ```
+
 ) to apply overrides.
 
 ### Notes
+
 - Unknown fields in project config are ignored.
 - You can keep a very small user-level setup and let each project define its own structure.
 - If you frequently switch branches that add/remove locale files, you may want to trigger a manual reload (e.g. a custom command that re-runs `setup()`).
@@ -487,11 +516,13 @@ projectA
 ├── tsconfig.json
 └── vite.config.ts
 ```
+
 Create a `.i18nrc.lua` file at the project root:
+
 ```lua
 return {
   locales = { "en", "zh" },
-  sources= { 
+  sources= {
     "src/locales/{locales}.json"
   }
 }
@@ -517,7 +548,9 @@ projectB
 ├── tsconfig.json
 └── vite.config.ts
 ```
+
 Create a `.i18nrc.lua` file at the project root:
+
 ```lua
 return {
     locales = { "en-US", "zh-CN" },
@@ -528,6 +561,7 @@ return {
 ```
 
 ### Multi-module multi-business i18n
+
 ```bash
 projectC
 ├── src
@@ -577,7 +611,9 @@ projectC
 ├── tsconfig.json
 └── vite.config.ts
 ```
+
 With the distributed i18n files below, create a `.i18nrc.lua` at the project root:
+
 ```lua
 return {
     locales = { "en-US", "zh-CN" },
