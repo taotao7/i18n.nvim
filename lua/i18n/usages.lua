@@ -216,31 +216,10 @@ local function collect_file_usages(file)
   local patterns = config.options and config.options.func_pattern or {}
 
   local comment_checker = nil
+  -- 避免在项目扫描时频繁触发 tree-sitter 解析，只有缓冲区已加载时才启用注释跳过
   local bufnr = vim.fn.bufnr(file)
   if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
     comment_checker = utils.make_comment_checker(bufnr)
-  end
-
-  if not comment_checker and utils.make_comment_checker_from_content then
-    local ft = nil
-    local ok_ft, matched_ft = pcall(vim.filetype.match, { filename = file })
-    if ok_ft then
-      ft = matched_ft
-    end
-    if not ft or ft == '' then
-      local ext = vim.fn.fnamemodify(file, ':e')
-      if ext and ext ~= '' then
-        ft = ext
-      end
-    end
-    if ft and ft_to_ts[ft] then
-      ft = ft_to_ts[ft]
-    end
-    local lang = ft
-    if lang and lang ~= '' then
-      local content = table.concat(lines, '\n')
-      comment_checker = utils.make_comment_checker_from_content(content, lang)
-    end
   end
 
   for idx, raw in ipairs(lines) do
@@ -1008,20 +987,29 @@ function M.refresh_async(opts)
   async_scan.active = true
   async_scan.processed_since_refresh = 0
 
+  local cfg = (config.options and config.options.usage_scan) or {}
   if opts.refresh_interval and opts.refresh_interval > 0 then
     async_scan.refresh_interval = opts.refresh_interval
+  elseif type(cfg.refresh_interval) == 'number' and cfg.refresh_interval > 0 then
+    async_scan.refresh_interval = cfg.refresh_interval
   end
 
   if opts.time_budget_ms and opts.time_budget_ms > 0 then
     async_scan.time_budget_ns = opts.time_budget_ms * 1000 * 1000
+  elseif type(cfg.time_budget_ms) == 'number' and cfg.time_budget_ms > 0 then
+    async_scan.time_budget_ns = cfg.time_budget_ms * 1000 * 1000
   end
 
   M.usages = {}
   M.file_index = {}
 
+  local delay = opts.start_delay_ms
+  if type(delay) ~= 'number' then
+    delay = (type(cfg.initial_delay_ms) == 'number' and cfg.initial_delay_ms) or 0
+  end
   vim.defer_fn(function()
     process_async_batch(async_scan.request_id)
-  end, opts.start_delay_ms or 0)
+  end, delay)
 
   return files
 end

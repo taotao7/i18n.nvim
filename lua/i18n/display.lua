@@ -16,6 +16,13 @@ M._popup_buf = nil
 -- 当前显示语言索引（基于 config.locales）
 M._current_locale_index = 1
 
+-- 每个缓冲区的光标移动刷新节流标记
+M._cursor_pending = {}
+-- 每个缓冲区的文本变更刷新节流标记
+M._text_pending = {}
+-- 注释检测缓存：按 buffer 的 changedtick 缓存，避免频繁解析
+M._comment_cache = {}
+
 -- 获取当前语言
 M.get_current_locale = function()
   local locales = (config.options or {}).locales or {}
@@ -370,7 +377,14 @@ M.refresh_buffer = function(bufnr)
 
   local comment_checker = nil
   if not file_locale then
-    comment_checker = utils.make_comment_checker(bufnr)
+    local tick = vim.api.nvim_buf_get_changedtick(bufnr)
+    local cache = M._comment_cache[bufnr]
+    if not cache or cache.tick ~= tick then
+      comment_checker = utils.make_comment_checker(bufnr)
+      M._comment_cache[bufnr] = { tick = tick, fn = comment_checker }
+    else
+      comment_checker = cache.fn
+    end
   end
 
   for line_num, line in ipairs(lines) do
@@ -596,9 +610,12 @@ M.setup_replace_mode = function()
     pattern = '*',
     callback = function(args)
       if not is_supported_ft(args.buf) then return end
+      if M._text_pending[args.buf] then return end
+      M._text_pending[args.buf] = true
       vim.defer_fn(function()
+        M._text_pending[args.buf] = false
         M.refresh_buffer(args.buf)
-      end, 100)
+      end, 120)
     end
   })
 
@@ -608,7 +625,9 @@ M.setup_replace_mode = function()
     pattern = '*',
     callback = function(args)
       if not is_supported_ft(args.buf) then return end
-      M.refresh_buffer(args.buf)
+      if type(M.on_cursor_moved) == 'function' then
+        M.on_cursor_moved(args.buf)
+      end
     end
   })
 end
@@ -626,6 +645,18 @@ M.refresh = function()
       M.refresh_buffer(bufnr)
     end
   end
+end
+
+-- 光标移动时的节流刷新，仅刷新对应缓冲区
+M.on_cursor_moved = function(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  if not is_supported_ft(bufnr) then return end
+  if M._cursor_pending[bufnr] then return end
+  M._cursor_pending[bufnr] = true
+  vim.defer_fn(function()
+    M._cursor_pending[bufnr] = false
+    M.refresh_buffer(bufnr)
+  end, 80)
 end
 
 -- 定义切换语言命令（只注册一次）

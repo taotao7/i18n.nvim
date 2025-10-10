@@ -110,17 +110,17 @@ M.make_comment_checker = function(bufnr)
     return nil
   end
 
+  -- 仅解析一次，避免在同一刷新周期内重复解析导致卡顿
+  local ok_tree, trees = pcall(parser.parse, parser)
+  if not ok_tree or not trees or not trees[1] then
+    return nil
+  end
+  local root = trees[1]:root()
+  if not root then return nil end
+
   return function(row, col)
     if row == nil or col == nil then return false end
     if row < 0 or col < 0 then return false end
-
-    local ok_tree, trees = pcall(parser.parse, parser)
-    if not ok_tree or not trees or not trees[1] then
-      return false
-    end
-
-    local root = trees[1]:root()
-    if not root then return false end
 
     local node = root:named_descendant_for_range(row, col, row, col)
     if not node then

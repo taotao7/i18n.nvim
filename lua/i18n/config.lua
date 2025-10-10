@@ -310,6 +310,12 @@ M.defaults = {
     -- Available values: 'vim_ui', 'telescope', 'fzf-lua', 'snacks'
     popup_type = 'fzf-lua',
   },
+  -- 控制初始项目扫描和后续刷新节奏
+  usage_scan = {
+    initial_delay_ms = 200,      -- VimEnter 后延迟触发，避免启动竞争
+    refresh_interval = 60,       -- 批处理多少文件后刷新一次 UI
+    time_budget_ms = 12,         -- 单批最大处理耗时（ms）
+  },
   -- Filetypes/extensions to scan when collecting key usages in project source files
   func_type = {
     'vue',

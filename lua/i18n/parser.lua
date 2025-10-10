@@ -50,16 +50,53 @@ function M._setup_file_watchers()
       vim.api.nvim_create_autocmd({ 'BufWritePost', 'BufDelete', 'FileChangedShellPost' }, {
         group = group,
         pattern = file,
-        callback = function()
-          -- 重新加载翻译并刷新展示
+        callback = function(args)
           local ok_p, parser_mod = pcall(require, 'i18n.parser')
-          if ok_p then
-            parser_mod.load_translations()
-          end
-          local ok_d, display_mod = pcall(require, 'i18n.display')
-            if ok_d and display_mod.refresh then
-              display_mod.refresh()
+          if not ok_p then return end
+          local abs = args and (args.match or args.file) or file
+          abs = (vim.loop.fs_realpath(abs) or abs)
+          local event = args and args.event or nil
+
+          local handled = false
+          local locales = (config.options and config.options.locales) or {}
+          for _, loc in ipairs(locales) do
+            local fp = parser_mod.file_prefixes and parser_mod.file_prefixes[loc]
+            if fp and fp[abs] then
+              if event == 'BufDelete' then
+                -- 删除该文件对应的条目
+                parser_mod.meta[loc] = parser_mod.meta[loc] or {}
+                parser_mod.translations[loc] = parser_mod.translations[loc] or {}
+                local to_remove = {}
+                for key, meta in pairs(parser_mod.meta[loc]) do
+                  if meta.file == abs then
+                    table.insert(to_remove, key)
+                  end
+                end
+                for _, k in ipairs(to_remove) do
+                  parser_mod.meta[loc][k] = nil
+                  parser_mod.translations[loc][k] = nil
+                end
+                handled = true
+              else
+                if args and args.buf and vim.api.nvim_buf_is_valid(args.buf) then
+                  local ok_rel, _ = pcall(parser_mod.reload_translation_buffer, abs, loc, args.buf)
+                  if ok_rel then
+                    handled = true
+                  end
+                end
+              end
             end
+          end
+
+          if not handled then
+            -- 回退到全量重载（如外部改动没有关联到现有映射）
+            pcall(parser_mod.load_translations)
+          end
+
+          local ok_d, display_mod = pcall(require, 'i18n.display')
+          if ok_d and display_mod and display_mod.refresh then
+            display_mod.refresh()
+          end
         end,
         desc = "Reload i18n translations on file change",
       })
@@ -80,6 +117,31 @@ local function parse_json(content)
   for i, l in ipairs(lines) do
     lines[i] = l:gsub("\r$", "")
   end
+  -- 单次扫描收集 key 的可能出现位置，避免针对每个 key 逐行扫描
+  local key_positions = {}
+  for idx, l in ipairs(lines) do
+    for key in l:gmatch('"([^"]+)"%s*:') do
+      local s = l:find('"' .. key .. '"', 1, true)
+      local col = (s and (s + 1)) or 1
+      local bucket = key_positions[key]
+      if not bucket then
+        bucket = {}
+        key_positions[key] = bucket
+      end
+      bucket[#bucket + 1] = { line = idx, col = col }
+    end
+    for key in l:gmatch("'([^']+)'%s*:") do
+      local s = l:find("'" .. key .. "'", 1, true)
+      local col = (s and (s + 1)) or 1
+      local bucket = key_positions[key]
+      if not bucket then
+        bucket = {}
+        key_positions[key] = bucket
+      end
+      bucket[#bucket + 1] = { line = idx, col = col }
+    end
+  end
+  local used_index = {}
 
   local function guess_line(seg)
     seg = tostring(seg)  -- 确保 seg 是字符串
@@ -109,35 +171,17 @@ local function parse_json(content)
   local col_map = {}
 
   local function find_line_and_col(seg)
-    seg = tostring(seg)  -- 确保 seg 是字符串
-
-    -- 安全转义函数，避免 vim.pesc 的类型检查问题
-    local function safe_escape(s)
-      local ok, result = pcall(vim.pesc, s)
-      if ok then
-        return result
-      else
-        -- 手动转义正则特殊字符
-        return s:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+    local name = tostring(seg)
+    local list = key_positions[name]
+    if list and #list > 0 then
+      local i = (used_index[name] or 0) + 1
+      local pos = list[i]
+      if not pos then
+        pos = list[1]
+        i = 1
       end
-    end
-
-    for idx, l in ipairs(lines) do
-      -- 匹配 "key": 或 'key':
-      local pattern = '([\'"])' .. safe_escape(seg) .. '%1%s*:'
-      local s = l:find(pattern)
-      if s then
-        -- s 指向引号位置，列号取 key 第一个字符（引号后一位），1-based
-        local col = s + 1
-        local len = #l
-        if len == 0 then
-          col = 1
-        elseif col > len then
-          col = len
-        end
-        if col < 1 then col = 1 end
-        return idx, col
-      end
+      used_index[name] = i
+      return pos.line, pos.col
     end
     return 1, 1
   end
