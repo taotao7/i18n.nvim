@@ -83,9 +83,21 @@ local function parse_json(content)
 
   local function guess_line(seg)
     seg = tostring(seg)  -- 确保 seg 是字符串
+
+    -- 安全转义函数
+    local function safe_escape(s)
+      local ok, result = pcall(vim.pesc, s)
+      if ok then
+        return result
+      else
+        -- 手动转义正则特殊字符
+        return s:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+      end
+    end
+
     for idx, l in ipairs(lines) do
       -- 匹配 "seg": 或 'seg':
-      if l:match('[\'"]' .. vim.pesc(seg) .. '[\'"]%s*:') then
+      if l:match('[\'"]' .. safe_escape(seg) .. '[\'"]%s*:') then
         return idx
       end
     end
@@ -98,9 +110,21 @@ local function parse_json(content)
 
   local function find_line_and_col(seg)
     seg = tostring(seg)  -- 确保 seg 是字符串
+
+    -- 安全转义函数，避免 vim.pesc 的类型检查问题
+    local function safe_escape(s)
+      local ok, result = pcall(vim.pesc, s)
+      if ok then
+        return result
+      else
+        -- 手动转义正则特殊字符
+        return s:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+      end
+    end
+
     for idx, l in ipairs(lines) do
       -- 匹配 "key": 或 'key':
-      local pattern = '([\'"])' .. vim.pesc(seg) .. '%1%s*:'
+      local pattern = '([\'"])' .. safe_escape(seg) .. '%1%s*:'
       local s = l:find(pattern)
       if s then
         -- s 指向引号位置，列号取 key 第一个字符（引号后一位），1-based
