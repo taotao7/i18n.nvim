@@ -358,6 +358,12 @@ M.options = {}
 local function load_project_config()
   local config_files = { '.i18nrc.json', 'i18n.config.json', '.i18nrc.lua' }
   local cwd = vim.fn.getcwd()
+  
+  -- Check if current working directory exists
+  if vim.fn.isdirectory(cwd) ~= 1 then
+    return nil, nil
+  end
+  
   for _, filename in ipairs(config_files) do
     local full = cwd .. '/' .. filename
     if vim.fn.filereadable(full) == 1 then
