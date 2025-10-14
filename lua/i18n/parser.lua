@@ -34,6 +34,8 @@ M.meta = {}
 
 -- 已解析出的实际翻译文件绝对路径列表（用于监控变更）
 M._translation_files = {}
+-- 标记翻译是否已加载
+M._translations_loaded = false
 
 -- 设置自动命令监控翻译文件的写入 / 删除 / 外部变更
 function M._setup_file_watchers()
@@ -653,10 +655,21 @@ M.load_translations = function()
 
   -- 注册文件监控
   M._setup_file_watchers()
+  -- 标记为已加载
+  M._translations_loaded = true
+end
+
+-- 确保翻译已加载（按需加载）
+M.ensure_loaded = function()
+  if not M._translations_loaded then
+    M.load_translations()
+  end
 end
 
 -- 获取特定语言的翻译
 M.get_translation = function(key, locale)
+  -- 确保翻译已加载
+  M.ensure_loaded()
   local locales = config.options.locales
   locale = locale or (locales and locales[1])
   if M.translations[locale] and M.translations[locale][key] then
@@ -667,6 +680,8 @@ end
 
 -- 获取所有语言的翻译
 M.get_all_translations = function(key)
+  -- 确保翻译已加载
+  M.ensure_loaded()
   local result = {}
   for locale, translations in pairs(M.translations) do
     if translations[key] then
@@ -688,6 +703,8 @@ M.get_key_location = function(key, locale)
 end
 
 M.get_all_keys = function()
+  -- 确保翻译已加载
+  M.ensure_loaded()
   if not M.all_keys then return {} end
   return M.all_keys
 end

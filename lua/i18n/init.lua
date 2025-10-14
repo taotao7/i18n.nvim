@@ -166,10 +166,24 @@ end
 M.setup = function(opts)
   config.setup(opts)
 
-  -- 加载所有语言文件
-  parser.load_translations()
+  -- 延迟加载或立即加载翻译文件
+  local lazy_load = config.options.lazy_load
+  if lazy_load == false then
+    -- 用户明确要求立即加载
+    parser.load_translations()
+  else
+    -- 默认延迟加载，避免阻塞启动
+    vim.defer_fn(function()
+      parser.load_translations()
+      -- 翻译加载后刷新显示
+      local ok, disp = pcall(require, 'i18n.display')
+      if ok and disp.refresh then
+        disp.refresh()
+      end
+    end, config.options.load_delay_ms or 50)
+  end
 
-  -- 初始化源代码使用扫描
+  -- 初始化源代码使用扫描（已经是异步的）
   usages.setup()
 
   -- 设置显示模式

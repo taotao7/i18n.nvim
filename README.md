@@ -3,7 +3,10 @@
 - performance optimizations
 - better compatibility
 
-A lightweight Neovim plugin for displaying and managing project i18n (translation) files directly in the editor.  
+A lightweight Neovim plugin for displaying and managing project i18n (translation) files directly in the editor.
+
+> [!TIP]
+> **Performance Note**: If you experience slow startup in large projects, the plugin uses lazy loading by default. Translation files are loaded asynchronously after a short delay (50ms). You can tune this with `lazy_load` and `load_delay_ms` options, and exclude unnecessary paths with `exclude_paths` for even better performance.  
 Designed to work across most project types (front-end, backend, mixed monorepos), supporting JSON, YAML, Java .properties, and JS/TS translation modules (Tree-sitter parses JS/TS translation objects).
 
 <table>
@@ -321,6 +324,9 @@ Common options (all optional when a project file is present):
   - `false`: disable diagnostics entirely (existing ones are cleared)
   - `true`: enable diagnostics with default behavior (ERROR severity for missing translations)
   - `{ ... }` (table): enable diagnostics and pass the table as the 4th argument to `vim.diagnostic.set` (e.g. `{ underline = false, virtual_text = false }`)
+- lazy_load: defer translation loading to avoid blocking startup (default `true`)
+- load_delay_ms: delay in milliseconds before loading translations (default `50`)
+- exclude_paths: array of path patterns to exclude from usage scanning (default `{ 'node_modules', '.git', 'dist', 'build', 'vendor', 'tmp' }`)
 
 ### `func_pattern` quick guide
 

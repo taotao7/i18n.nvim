@@ -115,6 +115,12 @@ local function collect_files()
 
   if vim.fn.executable('rg') == 1 then
     local cmd_args = { 'rg', '--files' }
+    -- 添加排除模式
+    local exclude_paths = config.options and config.options.exclude_paths or {}
+    for _, pattern in ipairs(exclude_paths) do
+      table.insert(cmd_args, '-g')
+      table.insert(cmd_args, '!' .. pattern)
+    end
     for _, glob in ipairs(globs) do
       table.insert(cmd_args, '-g')
       table.insert(cmd_args, glob)
@@ -147,15 +153,26 @@ local function collect_files()
       end
       for _, rel in ipairs(git_output) do
         if type(rel) == 'string' and rel ~= '' then
-          for _, reg in ipairs(regexes) do
-            if vim.fn.match(rel, reg) ~= -1 then
-              local abs = cwd .. '/' .. rel
-              abs = vim.loop.fs_realpath(abs) or abs
-              if not seen[abs] then
-                seen[abs] = true
-                table.insert(files, abs)
-              end
+          -- 检查是否在排除路径中
+          local should_exclude = false
+          local exclude_paths = config.options and config.options.exclude_paths or {}
+          for _, exc_pattern in ipairs(exclude_paths) do
+            if rel:match(exc_pattern) then
+              should_exclude = true
               break
+            end
+          end
+          if not should_exclude then
+            for _, reg in ipairs(regexes) do
+              if vim.fn.match(rel, reg) ~= -1 then
+                local abs = cwd .. '/' .. rel
+                abs = vim.loop.fs_realpath(abs) or abs
+                if not seen[abs] then
+                  seen[abs] = true
+                  table.insert(files, abs)
+                end
+                break
+              end
             end
           end
         end

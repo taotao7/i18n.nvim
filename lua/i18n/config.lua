@@ -316,6 +316,18 @@ M.defaults = {
     refresh_interval = 60,       -- 批处理多少文件后刷新一次 UI
     time_budget_ms = 12,         -- 单批最大处理耗时（ms）
   },
+  -- 性能优化选项：控制翻译文件加载时机
+  lazy_load = true,               -- 延迟加载翻译文件，避免阻塞启动（设为 false 立即加载）
+  load_delay_ms = 50,             -- 延迟加载的等待时间（毫秒）
+  -- 在大型项目中限制扫描范围
+  exclude_paths = {               -- 扫描时排除的路径模式
+    'node_modules',
+    '.git',
+    'dist',
+    'build',
+    'vendor',
+    'tmp',
+  },
   -- Filetypes/extensions to scan when collecting key usages in project source files
   func_type = {
     'vue',
