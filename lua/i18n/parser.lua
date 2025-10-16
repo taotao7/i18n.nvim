@@ -620,6 +620,18 @@ end
 
 -- 加载所有翻译文件
 M.load_translations = function()
+  -- 检查当前工作目录，如果是用户根目录则跳过扫描
+  local cwd = vim.fn.getcwd()
+  local home = vim.env.HOME or os.getenv("HOME")
+  if home and cwd == home then
+    vim.notify('[i18n] Skipping scan in home directory to avoid performance issues', vim.log.levels.WARN)
+    M.translations = {}
+    M._translation_files = {}
+    M.all_keys = {}
+    M._translations_loaded = true
+    return
+  end
+
   M.translations = {}
   M._translation_files = {}
   local options = config.options
