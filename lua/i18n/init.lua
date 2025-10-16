@@ -172,7 +172,7 @@ M.setup = function(opts)
     -- 用户明确要求立即加载
     parser.load_translations()
   else
-    -- 默认延迟加载，避免阻塞启动
+    -- 默认延迟加载，避免阻塞启动（提高延迟时间）
     vim.defer_fn(function()
       parser.load_translations()
       -- 翻译加载后刷新显示
@@ -180,7 +180,7 @@ M.setup = function(opts)
       if ok and disp.refresh then
         disp.refresh()
       end
-    end, config.options.load_delay_ms or 50)
+    end, config.options.load_delay_ms or 150)
   end
 
   -- 初始化源代码使用扫描（已经是异步的）

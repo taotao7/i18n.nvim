@@ -22,6 +22,8 @@ M._cursor_pending = {}
 M._text_pending = {}
 -- 注释检测缓存：按 buffer 的 changedtick 缓存，避免频繁解析
 M._comment_cache = {}
+-- 记录上次光标所在行，用于增量刷新
+M._last_cursor_line = {}
 
 -- 获取当前语言
 M.get_current_locale = function()
@@ -213,6 +215,12 @@ end
 -- 刷新缓冲区显示
 M.refresh_buffer = function(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
+  
+  -- 大文件优化：跳过超过 5000 行的文件
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  if line_count > 5000 then
+    return
+  end
 
   -- 提前判定是否为翻译文件：即属于任一 locale 的已解析文件
   local buf_path = vim.api.nvim_buf_get_name(bufnr)
@@ -379,11 +387,13 @@ M.refresh_buffer = function(bufnr)
   if not file_locale then
     local tick = vim.api.nvim_buf_get_changedtick(bufnr)
     local cache = M._comment_cache[bufnr]
-    if not cache or cache.tick ~= tick then
-      comment_checker = utils.make_comment_checker(bufnr)
-      M._comment_cache[bufnr] = { tick = tick, fn = comment_checker }
-    else
+    -- 增加缓存有效期：如果 tick 没变且缓存时间不超过 5 秒，直接使用缓存
+    local now = vim.loop.now()
+    if cache and cache.tick == tick and cache.timestamp and (now - cache.timestamp) < 5000 then
       comment_checker = cache.fn
+    else
+      comment_checker = utils.make_comment_checker(bufnr)
+      M._comment_cache[bufnr] = { tick = tick, fn = comment_checker, timestamp = now }
     end
   end
 
@@ -604,7 +614,7 @@ M.setup_replace_mode = function()
     end
   })
 
-  -- 文本改变时刷新
+  -- 文本改变时刷新（增加节流时间从 120ms 到 250ms）
   vim.api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI' }, {
     group = group,
     pattern = '*',
@@ -615,7 +625,7 @@ M.setup_replace_mode = function()
       vim.defer_fn(function()
         M._text_pending[args.buf] = false
         M.refresh_buffer(args.buf)
-      end, 120)
+      end, 250)
     end
   })
 
@@ -625,6 +635,15 @@ M.setup_replace_mode = function()
     pattern = '*',
     callback = function(args)
       if not is_supported_ft(args.buf) then return end
+      -- 快速检查：如果光标仍在同一行，不触发刷新
+      local current_win = vim.api.nvim_get_current_win()
+      if vim.api.nvim_win_get_buf(current_win) == args.buf then
+        local cursor_line = vim.api.nvim_win_get_cursor(current_win)[1]
+        if M._last_cursor_line[args.buf] == cursor_line then
+          return
+        end
+        M._last_cursor_line[args.buf] = cursor_line
+      end
       if type(M.on_cursor_moved) == 'function' then
         M.on_cursor_moved(args.buf)
       end
@@ -647,7 +666,7 @@ M.refresh = function()
   end
 end
 
--- 光标移动时的节流刷新，仅刷新对应缓冲区
+-- 光标移动时的节流刷新，仅刷新对应缓冲区（增加节流时间从 80ms 到 200ms）
 M.on_cursor_moved = function(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
   if not is_supported_ft(bufnr) then return end
@@ -656,7 +675,7 @@ M.on_cursor_moved = function(bufnr)
   vim.defer_fn(function()
     M._cursor_pending[bufnr] = false
     M.refresh_buffer(bufnr)
-  end, 80)
+  end, 200)
 end
 
 -- 定义切换语言命令（只注册一次）

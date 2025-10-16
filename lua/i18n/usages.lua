@@ -47,8 +47,8 @@ local async_scan = {
   files = {},
   index = 1,
   processed_since_refresh = 0,
-  refresh_interval = 40,
-  time_budget_ns = 10 * 1000 * 1000, -- 10ms per batch
+  refresh_interval = 80,  -- 提高刷新间隔，减少UI更新频率
+  time_budget_ns = 8 * 1000 * 1000, -- 降低到 8ms per batch，避免阻塞
 }
 
 local function schedule_display_refresh()

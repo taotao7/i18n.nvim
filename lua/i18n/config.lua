@@ -312,13 +312,13 @@ M.defaults = {
   },
   -- 控制初始项目扫描和后续刷新节奏
   usage_scan = {
-    initial_delay_ms = 200,      -- VimEnter 后延迟触发，避免启动竞争
-    refresh_interval = 60,       -- 批处理多少文件后刷新一次 UI
-    time_budget_ms = 12,         -- 单批最大处理耗时（ms）
+    initial_delay_ms = 800,      -- VimEnter 后延迟触发，避免启动竞争（提高到 800ms）
+    refresh_interval = 80,       -- 批处理多少文件后刷新一次 UI（提高到 80）
+    time_budget_ms = 8,          -- 单批最大处理耗时（降低到 8ms）
   },
   -- 性能优化选项：控制翻译文件加载时机
   lazy_load = true,               -- 延迟加载翻译文件，避免阻塞启动（设为 false 立即加载）
-  load_delay_ms = 50,             -- 延迟加载的等待时间（毫秒）
+  load_delay_ms = 150,            -- 延迟加载的等待时间（提高到 150 毫秒）
   -- 在大型项目中限制扫描范围
   exclude_paths = {               -- 扫描时排除的路径模式
     'node_modules',
