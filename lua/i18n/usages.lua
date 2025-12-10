@@ -124,7 +124,7 @@ local function collect_files()
   end
 
   if home and cwd and normalize_path(home) == normalize_path(cwd) then
-    vim.notify('[i18n] Skipping usage scan in home directory to avoid performance issues', vim.log.levels.WARN)
+    -- vim.notify('[i18n] Skipping usage scan in home directory to avoid performance issues', vim.log.levels.WARN)
     return {}
   end
 

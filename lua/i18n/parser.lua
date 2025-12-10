@@ -632,7 +632,7 @@ M.load_translations = function()
   end
 
   if home and cwd and normalize_path(home) == normalize_path(cwd) then
-    vim.notify('[i18n] Skipping scan in home directory to avoid performance issues', vim.log.levels.WARN)
+    -- vim.notify('[i18n] Skipping scan in home directory to avoid performance issues', vim.log.levels.WARN)
     M.translations = {}
     M._translation_files = {}
     M.all_keys = {}
