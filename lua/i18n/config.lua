@@ -369,47 +369,62 @@ M.options = {}
 -- 自动探测项目中的 locale 目录
 local function detect_project_config()
   local cwd = vim.fn.getcwd()
-  -- 常见目录结构
-  local roots = { "src/locales", "src/i18n", "locales", "i18n", "src/lang", "lang" }
+  
+  -- 基础搜索根目录 (增加 monorepo 支持)
+  local search_roots = { 
+    "", 
+    "src", 
+    "apps/*", 
+    "apps/*/src", 
+    "packages/*", 
+    "packages/*/src" 
+  }
+  
+  -- 可能的 locale 文件夹名称
+  local locale_dir_names = { "locales", "i18n", "lang", "langs" }
+  
+  -- 扩展名
   local extensions = { "json", "yaml", "yml", "js", "ts" }
 
-  for _, root in ipairs(roots) do
-    local dir = cwd .. '/' .. root
-    if vim.fn.isdirectory(dir) == 1 then
-      -- 扫描该目录下的条目
-      local entries = vim.fn.readdir(dir)
-      local locales = {}
-      local ext_found = nil
-      local structure_type = nil -- 'flat' or 'nested'
+  -- 递归寻找符合语言特征的目录 (max_depth=2, 比如 locales/langs/en-US)
+  -- 返回: locales (table), ext (string), structure ('flat'|'nested'), final_dir (string)
+  local function probe_locale_dir(dir, depth)
+    if depth > 2 then return nil end
+    local ok, entries = pcall(vim.fn.readdir, dir)
+    if not ok then return nil end
 
-      -- 1. 检查 flat 结构: locales/en.json, locales/zh.json
-      for _, entry in ipairs(entries) do
-        for _, ext in ipairs(extensions) do
-          if entry:match("%." .. ext .. "$") then
-            local lang = entry:gsub("%." .. ext .. "$", "")
-            -- 简单的语言代码检查（2-5个字符，可选包含连字符或下划线）
-            if lang:match("^%a%a[%-_]?%a?%a?$") or lang:match("^%a%a$") then
-              table.insert(locales, lang)
-              ext_found = ext
-              structure_type = 'flat'
-            end
+    local locales = {}
+    local ext_found = nil
+    local structure = nil
+
+    -- 1. 检查 flat 结构: dir/en.json
+    for _, entry in ipairs(entries) do
+      for _, ext in ipairs(extensions) do
+        if entry:match("%." .. ext .. "$") then
+          local lang = entry:gsub("%." .. ext .. "$", "")
+          if lang:match("^%a%a[%-_]?%a?%a?$") or lang:match("^%a%a$") then
+            table.insert(locales, lang)
+            ext_found = ext
+            structure = 'flat'
           end
         end
       end
+    end
 
-      -- 2. 如果没找到 flat 结构，检查 nested 结构: locales/en/..., locales/zh/...
-      if #locales == 0 then
-        for _, entry in ipairs(entries) do
-          if vim.fn.isdirectory(dir .. '/' .. entry) == 1 then
-             -- 排除非语言目录
-             if entry ~= "node_modules" and not entry:match("^%.") then
-                local lang = entry
-                -- 检查该目录下是否有 valid 文件
-                local sub_entries = vim.fn.readdir(dir .. '/' .. entry)
+    -- 2. 检查 nested 结构: dir/en/xxx.json
+    if #locales == 0 then
+      for _, entry in ipairs(entries) do
+        local sub = dir .. '/' .. entry
+        if vim.fn.isdirectory(sub) == 1 and entry ~= "node_modules" and not entry:match("^%.") then
+          -- 如果该目录名是语言代码
+          if entry:match("^%a%a[%-_]?%a?%a?$") or entry:match("^%a%a$") then
+             -- 检查该目录下是否有 valid 文件
+             local sub_ok, sub_entries = pcall(vim.fn.readdir, sub)
+             if sub_ok then
                 local has_files = false
-                for _, sub in ipairs(sub_entries) do
+                for _, f in ipairs(sub_entries) do
                   for _, ext in ipairs(extensions) do
-                    if sub:match("%." .. ext .. "$") then
+                    if f:match("%." .. ext .. "$") then
                       has_files = true
                       ext_found = ext
                       break
@@ -417,35 +432,87 @@ local function detect_project_config()
                   end
                   if has_files then break end
                 end
-                
                 if has_files then
-                   table.insert(locales, lang)
-                   structure_type = 'nested'
+                   table.insert(locales, entry)
+                   structure = 'nested'
                 end
              end
           end
         end
       end
+    end
 
-      if #locales > 0 and ext_found then
-        table.sort(locales)
-        local source_pattern
-        if structure_type == 'flat' then
-          source_pattern = root .. "/{locales}." .. ext_found
-        else
-          -- nested 结构通常是 locales/{locales}/{module}.json
-          source_pattern = root .. "/{locales}/{module}." .. ext_found
+    if #locales > 0 then
+      return locales, ext_found, structure, dir
+    end
+    
+    -- 3. 如果当前层级没找到，且允许递归，尝试进入子目录
+    -- 例如: src/locales/langs/en-US, 当前在 src/locales, 下面有 langs 目录
+    if depth < 2 then
+      for _, entry in ipairs(entries) do
+        if entry ~= "node_modules" and not entry:match("^%.") then
+          local sub = dir .. '/' .. entry
+          if vim.fn.isdirectory(sub) == 1 then
+             local res_loc, res_ext, res_struct, res_dir = probe_locale_dir(sub, depth + 1)
+             if res_loc then
+               return res_loc, res_ext, res_struct, res_dir
+             end
+          end
         end
-        
-        vim.notify(string.format("[i18n] Auto-detected locales in '%s': %s", root, table.concat(locales, ", ")), vim.log.levels.INFO)
-        
-        return {
-          locales = locales,
-          sources = { source_pattern }
-        }, "auto-detected"
+      end
+    end
+    
+    return nil
+  end
+
+  -- 展开 glob 路径
+  local expanded_roots = {}
+  for _, root in ipairs(search_roots) do
+    if root:find("*") then
+      local paths = vim.split(vim.fn.glob(cwd .. '/' .. root), "\n", true)
+      for _, p in ipairs(paths) do
+        if vim.fn.isdirectory(p) == 1 then
+          table.insert(expanded_roots, p)
+        end
+      end
+    else
+      local p = (root == "") and cwd or (cwd .. '/' .. root)
+      if vim.fn.isdirectory(p) == 1 then
+        table.insert(expanded_roots, p)
       end
     end
   end
+
+  -- 开始探测
+  for _, root_dir in ipairs(expanded_roots) do
+    for _, name in ipairs(locale_dir_names) do
+      local candidate = root_dir .. '/' .. name
+      if vim.fn.isdirectory(candidate) == 1 then
+        local locs, ext, struct, final_dir = probe_locale_dir(candidate, 0)
+        if locs then
+           table.sort(locs)
+           -- 构建相对路径 source pattern
+           -- final_dir 是绝对路径，需要转为相对于 cwd 的路径
+           local rel_dir = final_dir:gsub(vim.pesc(cwd) .. "/", "")
+           if rel_dir == cwd then rel_dir = "" end -- handle root
+           
+           local source_pattern
+           if struct == 'flat' then
+             source_pattern = rel_dir .. "/{locales}." .. ext
+           else
+             source_pattern = rel_dir .. "/{locales}/{module}." .. ext
+           end
+           
+           vim.notify(string.format("[i18n] Auto-detected locales in '%s': %s", rel_dir, table.concat(locs, ", ")), vim.log.levels.INFO)
+           return {
+             locales = locs,
+             sources = { source_pattern }
+           }, "auto-detected"
+        end
+      end
+    end
+  end
+  
   return nil, nil
 end
 
