@@ -45,13 +45,16 @@ function M.extract_keys(bufnr, config)
   
   -- 构建 Query
   -- 匹配 t('key') 或 this.t('key')
+  -- arguments: (arguments . [ (string) (template_string) ] @string_node) 
+  --   确保匹配第一个参数，并且支持普通字符串和模板字符串，
+  --   同时允许后面有逗号或其他参数（不使用末尾的 . anchor）
   local query_str_js = [[
     (call_expression
       function: [
         (identifier) @func_name
         (member_expression property: (property_identifier) @func_name)
       ]
-      arguments: (arguments (string) @string_node . )
+      arguments: (arguments . [ (string) (template_string) ] @string_node)
       (#any-of? @func_name %s)
     )
   ]]
