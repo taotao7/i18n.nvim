@@ -9,6 +9,19 @@ A lightweight Neovim plugin for displaying and managing project i18n (translatio
 > **Performance Note**: If you experience slow startup in large projects, the plugin uses lazy loading by default. Translation files are loaded asynchronously after a short delay (50ms). You can tune this with `lazy_load` and `load_delay_ms` options, and exclude unnecessary paths with `exclude_paths` for even better performance.  
 Designed to work across most project types (front-end, backend, mixed monorepos), supporting JSON, YAML, Java .properties, and JS/TS translation modules (Tree-sitter parses JS/TS translation objects).
 
+## 🆕 Recent Updates (last 10 commits)
+
+- Added Next.js locale support and improved key extraction.
+- Refined Tree-sitter query to match the first argument precisely.
+- Hardened Tree-sitter query handling for trailing commas and template strings.
+- Switched to Tree-sitter-based key extraction to support multi-line calls.
+- Suppressed warnings when skipping scans in the home directory.
+- Added default module prefix when auto-detecting nested locale structures.
+- Improved auto-detection for deep locale structures and monorepos.
+- Optimized home directory scanning and auto-detection for locales.
+- Tuned performance with adjusted timing and caching.
+- Skipped translation scanning in the home directory to avoid noise.
+
 <table>
   <tr>
     <th>Show Translation</th>
