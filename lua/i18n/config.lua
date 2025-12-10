@@ -366,6 +366,89 @@ M.defaults = {
 M.project_config = nil
 M.options = {}
 
+-- 自动探测项目中的 locale 目录
+local function detect_project_config()
+  local cwd = vim.fn.getcwd()
+  -- 常见目录结构
+  local roots = { "src/locales", "src/i18n", "locales", "i18n", "src/lang", "lang" }
+  local extensions = { "json", "yaml", "yml", "js", "ts" }
+
+  for _, root in ipairs(roots) do
+    local dir = cwd .. '/' .. root
+    if vim.fn.isdirectory(dir) == 1 then
+      -- 扫描该目录下的条目
+      local entries = vim.fn.readdir(dir)
+      local locales = {}
+      local ext_found = nil
+      local structure_type = nil -- 'flat' or 'nested'
+
+      -- 1. 检查 flat 结构: locales/en.json, locales/zh.json
+      for _, entry in ipairs(entries) do
+        for _, ext in ipairs(extensions) do
+          if entry:match("%." .. ext .. "$") then
+            local lang = entry:gsub("%." .. ext .. "$", "")
+            -- 简单的语言代码检查（2-5个字符，可选包含连字符或下划线）
+            if lang:match("^%a%a[%-_]?%a?%a?$") or lang:match("^%a%a$") then
+              table.insert(locales, lang)
+              ext_found = ext
+              structure_type = 'flat'
+            end
+          end
+        end
+      end
+
+      -- 2. 如果没找到 flat 结构，检查 nested 结构: locales/en/..., locales/zh/...
+      if #locales == 0 then
+        for _, entry in ipairs(entries) do
+          if vim.fn.isdirectory(dir .. '/' .. entry) == 1 then
+             -- 排除非语言目录
+             if entry ~= "node_modules" and not entry:match("^%.") then
+                local lang = entry
+                -- 检查该目录下是否有 valid 文件
+                local sub_entries = vim.fn.readdir(dir .. '/' .. entry)
+                local has_files = false
+                for _, sub in ipairs(sub_entries) do
+                  for _, ext in ipairs(extensions) do
+                    if sub:match("%." .. ext .. "$") then
+                      has_files = true
+                      ext_found = ext
+                      break
+                    end
+                  end
+                  if has_files then break end
+                end
+                
+                if has_files then
+                   table.insert(locales, lang)
+                   structure_type = 'nested'
+                end
+             end
+          end
+        end
+      end
+
+      if #locales > 0 and ext_found then
+        table.sort(locales)
+        local source_pattern
+        if structure_type == 'flat' then
+          source_pattern = root .. "/{locales}." .. ext_found
+        else
+          -- nested 结构通常是 locales/{locales}/{module}.json
+          source_pattern = root .. "/{locales}/{module}." .. ext_found
+        end
+        
+        vim.notify(string.format("[i18n] Auto-detected locales in '%s': %s", root, table.concat(locales, ", ")), vim.log.levels.INFO)
+        
+        return {
+          locales = locales,
+          sources = { source_pattern }
+        }, "auto-detected"
+      end
+    end
+  end
+  return nil, nil
+end
+
 -- Attempt to load project-level configuration from current working directory
 local function load_project_config()
   local config_files = { '.i18nrc.json', 'i18n.config.json', '.i18nrc.lua' }
@@ -402,7 +485,9 @@ local function load_project_config()
       end
     end
   end
-  return nil, nil
+
+  -- Fallback to auto-detection
+  return detect_project_config()
 end
 
 -- Allow external callers to force reload the project configuration

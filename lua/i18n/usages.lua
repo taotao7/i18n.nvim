@@ -112,6 +112,21 @@ local function collect_files()
   local files = {}
   local seen = {}
   local cwd = vim.loop.cwd()
+  local home = vim.env.HOME or os.getenv("HOME")
+  
+  -- 简单标准化路径（移除末尾斜杠）
+  local function normalize_path(p)
+    if not p then return "" end
+    -- 将反斜杠转为正斜杠（Windows兼容）
+    p = p:gsub("\\", "/")
+    -- 移除末尾斜杠
+    return p:gsub("/+$", "")
+  end
+
+  if home and cwd and normalize_path(home) == normalize_path(cwd) then
+    vim.notify('[i18n] Skipping usage scan in home directory to avoid performance issues', vim.log.levels.WARN)
+    return {}
+  end
 
   if vim.fn.executable('rg') == 1 then
     local cmd_args = { 'rg', '--files' }

@@ -623,7 +623,15 @@ M.load_translations = function()
   -- 检查当前工作目录，如果是用户根目录则跳过扫描
   local cwd = vim.fn.getcwd()
   local home = vim.env.HOME or os.getenv("HOME")
-  if home and cwd == home then
+  
+  -- 简单标准化路径
+  local function normalize_path(p)
+    if not p then return "" end
+    p = p:gsub("\\", "/")
+    return p:gsub("/+$", "")
+  end
+
+  if home and cwd and normalize_path(home) == normalize_path(cwd) then
     vim.notify('[i18n] Skipping scan in home directory to avoid performance issues', vim.log.levels.WARN)
     M.translations = {}
     M._translation_files = {}
