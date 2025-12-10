@@ -3,6 +3,7 @@ local config = require('i18n.config')
 local parser = require('i18n.parser')
 local usages = require('i18n.usages')
 local utils = require('i18n.utils')
+local ts_utils = require('i18n.ts_utils')
 
 -- 命名空间
 local ns = vim.api.nvim_create_namespace('i18n_display')
@@ -271,6 +272,27 @@ M.refresh_buffer = function(bufnr)
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
   local diagnostics = {}
 
+  -- 尝试使用 Treesitter 提取 keys
+  local ts_keys_list = nil
+  local ts_keys_by_line = nil
+  if is_supported_ft(bufnr) then
+    ts_keys_list = ts_utils.extract_keys(bufnr, config)
+    if ts_keys_list then
+      ts_keys_by_line = {}
+      for _, item in ipairs(ts_keys_list) do
+        -- item: { key, line, start_pos, end_pos, row_end }
+        -- 我们将结果绑定到字符串结束的那一行，以展示虚拟文本
+        -- 或者是字符串所在行。对于多行调用，key string 往往在中间。
+        -- 这里我们选择 row_end (字符串结束行) 来展示虚拟文本
+        local target_line = item.row_end + 1 -- 1-based
+        if not ts_keys_by_line[target_line] then
+          ts_keys_by_line[target_line] = {}
+        end
+        table.insert(ts_keys_by_line[target_line], item)
+      end
+    end
+  end
+
   -- 若是翻译文件：增量解析（未保存插入/删除行后行号立即同步），然后行尾展示当前显示语言翻译
   if file_locale then
     local changedtick = vim.api.nvim_buf_get_changedtick(bufnr)
@@ -398,7 +420,42 @@ M.refresh_buffer = function(bufnr)
   end
 
   for line_num, line in ipairs(lines) do
-    local keys = extract_i18n_keys(bufnr, line_num, line, patterns, comment_checker)
+    local keys = {}
+    
+    -- 优先使用 Treesitter 结果
+    if ts_keys_by_line and ts_keys_by_line[line_num] then
+      for _, item in ipairs(ts_keys_by_line[line_num]) do
+        table.insert(keys, {
+          key = item.key,
+          start_pos = item.start_pos + 1, -- 转换为 1-based 用于后续逻辑兼容
+          end_pos = item.end_pos,         -- extract_keys 返回的是 0-based exclusive end? No, usual TS range is exclusive end.
+                                          -- set_virtual_text takes 0-based col.
+                                          -- item.end_pos in ts_utils is c2 (exclusive).
+                                          -- But wait, set_virtual_text expects `col0`.
+                                          -- Let's check regex logic: find returns inclusive indices.
+                                          -- set_virtual_text(..., key_info.end_pos) -> matches end index (inclusive).
+                                          -- TS range c2 is exclusive. So c2 == regex_end_pos + 1.
+                                          -- So to match `end_pos` semantics of regex (inclusive), we need c2.
+                                          -- Wait, set_virtual_text uses `col0 = math.max(0, math.min((col or 0) - 1, line_len))`.
+                                          -- If I pass c2 (exclusive index, which is length if end of line), `c2 - 1` is the last char index.
+                                          -- This seems correct for 0-based API.
+                                          -- Regex `end_pos` is 1-based index of last char.
+                                          -- `set_virtual_text` call: `set_virtual_text(..., key_info.end_pos, ...)`
+                                          -- Inside `set_virtual_text`: `col0 = (col - 1)`.
+                                          -- So if regex match ends at 10 (1-based), col passed is 10. col0 becomes 9 (0-based index of last char).
+                                          -- TS `end_col` (c2) is exclusive. If string is at 0-9 (len 10), c2 is 10.
+                                          -- If I pass 10, set_virtual_text makes it 9. Correct.
+          key_start_pos = item.start_pos + 1,
+          key_end_pos = item.end_pos
+        })
+      end
+    end
+
+    -- 如果没有 Treesitter 结果（不支持的语言或提取为空），回退到 Regex
+    if #keys == 0 then
+      keys = extract_i18n_keys(bufnr, line_num, line, patterns, comment_checker)
+    end
+
     -- vim.notify("keys: " .. vim.inspect(keys), vim.log.levels.DEBUG)
     local is_cursor_line = cursor_line and line_num == cursor_line
     for _, key_info in ipairs(keys) do
@@ -415,6 +472,10 @@ M.refresh_buffer = function(bufnr)
       end
 
       if translation and show_translation_line then
+        -- 这里的 key_info.end_pos 对于 TS 结果来说是 exclusive col (e.g. 10)，
+        -- set_virtual_text 会将其 -1 变成 9 (last char index)。
+        -- 对于 Regex 结果，是 inclusive index (e.g. 10), set_virtual_text 变成 9.
+        -- 看起来兼容。
         set_virtual_text(bufnr, line_num - 1, key_info.end_pos, translation, not hide_origin_line)
       end
 
@@ -435,12 +496,29 @@ M.refresh_buffer = function(bufnr)
         -- 只隐藏 key 及其引号，不隐藏函数名和括号
         -- 重新用正则查找本行内 key 的引号包裹范围
         -- 例如 $t('common.save') 只隐藏 'common.save'
-        local s, e, quote, key = line:find("(['\"])([^'\"]+)['\"]", key_info.start_pos)
-        if s and e and key == key_info.key then
-          vim.api.nvim_buf_set_extmark(bufnr, ns, line_num - 1, s - 1, {
-            end_col = e,
+        
+        -- 对于 TS 结果，我们可以直接用 key_info.start_pos/end_pos
+        -- 但是 extract_i18n_keys (Regex) 返回的 start_pos 可能是整个 pattern 的开头 (e.g. "$t('...")
+        -- 而 TS 返回的是 string node 的开头 (e.g. "'key'").
+        
+        -- 如果是 TS 结果:
+        if ts_keys_by_line and ts_keys_by_line[line_num] then 
+           -- TS range is for the string node (including quotes)
+           -- start_pos is 1-based start of string node
+           -- end_pos is 1-based exclusive end of string node (compatible with extmark end_col)
+           vim.api.nvim_buf_set_extmark(bufnr, ns, line_num - 1, key_info.start_pos - 1, {
+            end_col = key_info.end_pos,
             conceal = "",
           })
+        else
+          -- Fallback regex logic
+          local s, e, quote, key = line:find("(['\"])([^'\"]+)['\"]", key_info.start_pos)
+          if s and e and key == key_info.key then
+            vim.api.nvim_buf_set_extmark(bufnr, ns, line_num - 1, s - 1, {
+              end_col = e,
+              conceal = "",
+            })
+          end
         end
       end
     end
