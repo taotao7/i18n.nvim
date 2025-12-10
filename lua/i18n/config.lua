@@ -302,7 +302,10 @@ M.defaults = {
   },
   locales = { "en", "zh" },
   sources = {
+    -- Common defaults
     "src/locales/{locales}.json",
+    "messages/{locales}.json",                                    -- Next.js (next-intl) flat
+    { pattern = "public/locales/{locales}/{module}.json", prefix = "{module}." }, -- Next.js (next-i18next) nested
   },
   navigation = {},
   usage = {
@@ -371,17 +374,21 @@ local function detect_project_config()
   local cwd = vim.fn.getcwd()
   
   -- 基础搜索根目录 (增加 monorepo 支持)
-  local search_roots = { 
-    "", 
-    "src", 
-    "apps/*", 
-    "apps/*/src", 
-    "packages/*", 
-    "packages/*/src" 
+  local search_roots = {
+    "",
+    "src",
+    "app",
+    "public",
+    "apps/*",
+    "apps/*/src",
+    "apps/*/public",
+    "packages/*",
+    "packages/*/src",
+    "packages/*/public",
   }
   
   -- 可能的 locale 文件夹名称
-  local locale_dir_names = { "locales", "i18n", "lang", "langs" }
+  local locale_dir_names = { "locales", "i18n", "lang", "langs", "messages" }
   
   -- 扩展名
   local extensions = { "json", "yaml", "yml", "js", "ts" }
