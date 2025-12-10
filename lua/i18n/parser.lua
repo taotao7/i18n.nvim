@@ -45,63 +45,83 @@ function M._setup_file_watchers()
   end
   -- 统一使用同一个 augroup，每次重建
   local group = vim.api.nvim_create_augroup('I18nTranslationFilesWatcher', { clear = true })
-  local patterns_added = {}
+  local registered_files = {}
   for _, file in ipairs(M._translation_files) do
-    if file and file ~= "" and not patterns_added[file] then
-      patterns_added[file] = true
-      vim.api.nvim_create_autocmd({ 'BufWritePost', 'BufDelete', 'FileChangedShellPost' }, {
-        group = group,
-        pattern = file,
-        callback = function(args)
-          local ok_p, parser_mod = pcall(require, 'i18n.parser')
-          if not ok_p then return end
-          local abs = args and (args.match or args.file) or file
-          abs = (vim.loop.fs_realpath(abs) or abs)
-          local event = args and args.event or nil
+    if file and file ~= '' then
+      local abs = vim.loop.fs_realpath(file) or vim.fn.fnamemodify(file, ':p') or file
+      if not registered_files[abs] then
+        registered_files[abs] = true
 
-          local handled = false
-          local locales = (config.options and config.options.locales) or {}
-          for _, loc in ipairs(locales) do
-            local fp = parser_mod.file_prefixes and parser_mod.file_prefixes[loc]
-            if fp and fp[abs] then
-              if event == 'BufDelete' then
-                -- 删除该文件对应的条目
-                parser_mod.meta[loc] = parser_mod.meta[loc] or {}
-                parser_mod.translations[loc] = parser_mod.translations[loc] or {}
-                local to_remove = {}
-                for key, meta in pairs(parser_mod.meta[loc]) do
-                  if meta.file == abs then
-                    table.insert(to_remove, key)
-                  end
-                end
-                for _, k in ipairs(to_remove) do
-                  parser_mod.meta[loc][k] = nil
-                  parser_mod.translations[loc][k] = nil
-                end
-                handled = true
-              else
-                if args and args.buf and vim.api.nvim_buf_is_valid(args.buf) then
-                  local ok_rel, _ = pcall(parser_mod.reload_translation_buffer, abs, loc, args.buf)
-                  if ok_rel then
+        local pattern_set = {}
+        local patterns = {}
+        local function add_pattern(p)
+          if p and p ~= '' and not pattern_set[p] then
+            pattern_set[p] = true
+            table.insert(patterns, p)
+          end
+        end
+
+        add_pattern(abs)
+        add_pattern(file)
+        add_pattern(vim.fn.fnamemodify(abs, ':.'))
+        add_pattern(vim.fn.fnamemodify(file, ':.'))
+        add_pattern(vim.fn.fnamemodify(abs, ':~:.'))
+
+        if #patterns > 0 then
+          local tracked_abs = abs
+          vim.api.nvim_create_autocmd({ 'BufWritePost', 'BufDelete', 'FileChangedShellPost' }, {
+            group = group,
+            pattern = patterns,
+            callback = function(args)
+              local ok_p, parser_mod = pcall(require, 'i18n.parser')
+              if not ok_p then return end
+              local abs_path = args and (args.match or args.file) or tracked_abs
+              abs_path = vim.loop.fs_realpath(abs_path) or vim.fn.fnamemodify(abs_path or tracked_abs, ':p') or tracked_abs
+              local event = args and args.event or nil
+
+              local handled = false
+              local locales = (config.options and config.options.locales) or {}
+              for _, loc in ipairs(locales) do
+                local fp = parser_mod.file_prefixes and parser_mod.file_prefixes[loc]
+                if fp and fp[abs_path] then
+                  if event == 'BufDelete' then
+                    parser_mod.meta[loc] = parser_mod.meta[loc] or {}
+                    parser_mod.translations[loc] = parser_mod.translations[loc] or {}
+                    local to_remove = {}
+                    for key, meta in pairs(parser_mod.meta[loc]) do
+                      if meta.file == abs_path then
+                        table.insert(to_remove, key)
+                      end
+                    end
+                    for _, k in ipairs(to_remove) do
+                      parser_mod.meta[loc][k] = nil
+                      parser_mod.translations[loc][k] = nil
+                    end
                     handled = true
+                  else
+                    if args and args.buf and vim.api.nvim_buf_is_valid(args.buf) then
+                      local ok_rel, _ = pcall(parser_mod.reload_translation_buffer, abs_path, loc, args.buf)
+                      if ok_rel then
+                        handled = true
+                      end
+                    end
                   end
                 end
               end
-            end
-          end
 
-          if not handled then
-            -- 回退到全量重载（如外部改动没有关联到现有映射）
-            pcall(parser_mod.load_translations)
-          end
+              if not handled then
+                pcall(parser_mod.load_translations)
+              end
 
-          local ok_d, display_mod = pcall(require, 'i18n.display')
-          if ok_d and display_mod and display_mod.refresh then
-            display_mod.refresh()
-          end
-        end,
-        desc = "Reload i18n translations on file change",
-      })
+              local ok_d, display_mod = pcall(require, 'i18n.display')
+              if ok_d and display_mod and display_mod.refresh then
+                display_mod.refresh()
+              end
+            end,
+            desc = 'Reload i18n translations on file change',
+          })
+        end
+      end
     end
   end
 end
