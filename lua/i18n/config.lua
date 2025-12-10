@@ -496,17 +496,23 @@ local function detect_project_config()
            local rel_dir = final_dir:gsub(vim.pesc(cwd) .. "/", "")
            if rel_dir == cwd then rel_dir = "" end -- handle root
            
-           local source_pattern
+           local source_entry
            if struct == 'flat' then
-             source_pattern = rel_dir .. "/{locales}." .. ext
+             source_entry = rel_dir .. "/{locales}." .. ext
            else
-             source_pattern = rel_dir .. "/{locales}/{module}." .. ext
+             -- nested 结构通常是 locales/{locales}/{module}.json
+             -- 必须指定 prefix = "{module}."，否则 parser 会把文件内容直接合并到根，
+             -- 导致像 page.collection 这样的 key 无法匹配 (只匹配到 collection)
+             source_entry = {
+               pattern = rel_dir .. "/{locales}/{module}." .. ext,
+               prefix = "{module}."
+             }
            end
            
            vim.notify(string.format("[i18n] Auto-detected locales in '%s': %s", rel_dir, table.concat(locs, ", ")), vim.log.levels.INFO)
            return {
              locales = locs,
-             sources = { source_pattern }
+             sources = { source_entry }
            }, "auto-detected"
         end
       end
