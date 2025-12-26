@@ -508,12 +508,38 @@ local function detect_project_config()
              source_entry = rel_dir .. "/{locales}." .. ext
            else
              -- nested 结构通常是 locales/{locales}/{module}.json
-             -- 必须指定 prefix = "{module}."，否则 parser 会把文件内容直接合并到根，
-             -- 导致像 page.collection 这样的 key 无法匹配 (只匹配到 collection)
-             source_entry = {
-               pattern = rel_dir .. "/{locales}/{module}." .. ext,
-               prefix = "{module}."
-             }
+             -- 检查语言目录下有多少个翻译文件，如果只有一个文件则不使用 namespace 前缀
+             -- 例如: locales/zh/translation.json 只有一个文件时，key 不需要 translation. 前缀
+             local single_file_mode = false
+             if #locs > 0 then
+               local first_locale_dir = final_dir .. '/' .. locs[1]
+               local ok_count, first_entries = pcall(vim.fn.readdir, first_locale_dir)
+               if ok_count then
+                 local file_count = 0
+                 local single_filename = nil
+                 for _, f in ipairs(first_entries) do
+                   if f:match("%." .. ext .. "$") then
+                     file_count = file_count + 1
+                     single_filename = f:gsub("%." .. ext .. "$", "")
+                   end
+                 end
+                 -- 只有一个翻译文件时，不添加 namespace 前缀
+                 if file_count == 1 then
+                   single_file_mode = true
+                   source_entry = rel_dir .. "/{locales}/" .. single_filename .. "." .. ext
+                 end
+               end
+             end
+             
+             if not single_file_mode then
+               -- 多个翻译文件时，必须指定 prefix = "{module}."，
+               -- 否则 parser 会把文件内容直接合并到根，
+               -- 导致像 page.collection 这样的 key 无法匹配 (只匹配到 collection)
+               source_entry = {
+                 pattern = rel_dir .. "/{locales}/{module}." .. ext,
+                 prefix = "{module}."
+               }
+             end
            end
            
            vim.notify(string.format("[i18n] Auto-detected locales in '%s': %s", rel_dir, table.concat(locs, ", ")), vim.log.levels.INFO)
